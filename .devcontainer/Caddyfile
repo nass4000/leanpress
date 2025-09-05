@@ -1,0 +1,34 @@
+{
+  auto_https off
+}
+
+# Origin WordPress (served by php-fpm container)
+:80 {
+  root * /var/www/html
+  php_fastcgi wp:9000
+  file_server
+}
+
+# Mirror “public” site for dev — proxies GETs to your Actix mirror on dev:9001
+:8000 {
+
+  # Admin/login always go straight to WP
+  @admin path /wp-admin* /wp-login.php*
+  handle @admin {
+    reverse_proxy wp:9000
+  }
+
+  # Any POST bypasses mirror to WP (forms, etc.)
+  @post method POST
+  handle @post {
+    reverse_proxy wp:9000
+  }
+
+  # All other GETs -> mirror app (you'll run it in the dev container on :9001)
+  handle {
+    reverse_proxy dev:9001 {
+      header_up X-Forwarded-Host {host}
+      header_up X-Site-ID 1
+    }
+  }
+}

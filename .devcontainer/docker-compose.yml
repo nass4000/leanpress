@@ -1,0 +1,81 @@
+version: "3.8"
+
+services:
+  dev:
+    image: mcr.microsoft.com/devcontainers/base:ubuntu
+    init: true
+    volumes:
+      - ..:/workspaces/${LOCAL_WORKSPACE_FOLDER_NAME:-app}:cached
+    working_dir: /workspaces/${LOCAL_WORKSPACE_FOLDER_NAME:-app}
+    command: sleep infinity
+    depends_on:
+      - postgres
+      - mysql
+      - redis
+      - wp
+      - caddy
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      POSTGRES_URL: ${POSTGRES_URL:-postgres://panel:panel@postgres:5432/panel}
+      MYSQL_HOST: ${MYSQL_HOST:-mysql}
+      MYSQL_USER: ${MYSQL_USER:-wp}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wp}
+      ORIGIN_BASE: ${ORIGIN_BASE:-http://caddy}
+      SITE_HOST: ${SITE_HOST:-mysite.local.test}
+    networks: [devnet]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: panel
+      POSTGRES_PASSWORD: panel
+      POSTGRES_DB: panel
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [devnet]
+
+  mysql:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+    volumes:
+      - dbdata:/var/lib/mysql
+    networks: [devnet]
+
+  # One base WordPress origin (php-fpm) — panel will later create more per-site
+  wp:
+    image: wordpress:php8.3-fpm
+    depends_on: [mysql]
+    environment:
+      WORDPRESS_DB_HOST: mysql
+      WORDPRESS_DB_USER: wp
+      WORDPRESS_DB_PASSWORD: wp
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wpdata:/var/www/html
+    networks: [devnet]
+
+  # Caddy reverse-proxy for origin & mirror (dev)
+  caddy:
+    image: caddy:2
+    depends_on: [wp]
+    ports:
+      - "8080:80" # browse origin WordPress via :8080
+      - "8001:8000" # mirror “public” entry in dev via :8001 -> dev:9001
+    volumes:
+      - wpdata:/var/www/html
+      - ./.devcontainer/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks: [devnet]
+
+  redis:
+    image: redis:7-alpine
+    networks: [devnet]
+
+volumes:
+  pgdata: {}
+  dbdata: {}
+  wpdata: {}
+
+networks:
+  devnet: {}
