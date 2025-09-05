@@ -1,0 +1,72 @@
+{
+  "name": "Lean WP Host",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "dev",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "features": {
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "stable"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "esbenp.prettier-vscode",
+        "ms-python.python",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "files.watcherExclude": {
+          "/target/": true,
+          "/node_modules/": true
+        },
+        "rust-analyzer.cargo.watch.enable": true,
+        "editor.formatOnSave": true
+      }
+    }
+  },
+  "forwardPorts": [
+    8000,
+    9001,
+    8080,
+    8001,
+    6379,
+    5432,
+    3306
+  ],
+  "portsAttributes": {
+    "8000": {
+      "label": "Panel",
+      "onAutoForward": "openBrowser"
+    },
+    "8001": {
+      "label": "Mirror (Caddy)",
+      "onAutoForward": "openBrowser"
+    },
+    "8080": {
+      "label": "Origin WP (Caddy)",
+      "onAutoForward": "ignore"
+    }
+  },
+  "containerEnv": {
+    "RUST_LOG": "info",
+    "REDIS_URL": "redis://redis:6379",
+    "POSTGRES_URL": "postgres://panel:panel@postgres:5432/panel",
+    "MYSQL_HOST": "mysql",
+    "MYSQL_USER": "wp",
+    "MYSQL_PASSWORD": "wp",
+    "ORIGIN_BASE": "http://caddy",
+    "SITE_HOST": "mysite.local.test"
+  },
+  "postCreateCommand": "bash -lc \"if [ -f .devcontainer/post-create.sh ]; then chmod +x .devcontainer/post-create.sh && .devcontainer/post-create.sh; fi\"",
+  "postStartCommand": "bash -lc \"if [ -f .devcontainer/post-start.sh ]; then chmod +x .devcontainer/post-start.sh && .devcontainer/post-start.sh; fi\"",
+  "remoteUser": "vscode"
+}
