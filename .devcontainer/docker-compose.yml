@@ -6,6 +6,8 @@ services:
     init: true
     volumes:
       - ..:/workspaces/${LOCAL_WORKSPACE_FOLDER_NAME:-app}:cached
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/workspaces/${LOCAL_WORKSPACE_FOLDER_NAME:-app}/target
     working_dir: /workspaces/${LOCAL_WORKSPACE_FOLDER_NAME:-app}
     command: sleep infinity
     depends_on:
@@ -18,6 +20,7 @@ services:
       RUST_LOG: ${RUST_LOG:-info}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       POSTGRES_URL: ${POSTGRES_URL:-postgres://panel:panel@postgres:5432/panel}
+      DATABASE_URL: ${DATABASE_URL:-postgres://panel:panel@postgres:5432/panel}
       MYSQL_HOST: ${MYSQL_HOST:-mysql}
       MYSQL_USER: ${MYSQL_USER:-wp}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-wp}
@@ -33,6 +36,11 @@ services:
       POSTGRES_DB: panel
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U panel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks: [devnet]
 
   mysql:
@@ -41,12 +49,18 @@ services:
       MARIADB_ROOT_PASSWORD: root
     volumes:
       - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--su-mysql", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks: [devnet]
 
-  # One base WordPress origin (php-fpm) — panel will later create more per-site
   wp:
     image: wordpress:php8.3-fpm
-    depends_on: [mysql]
+    depends_on:
+      mysql:
+        condition: service_healthy
     environment:
       WORDPRESS_DB_HOST: mysql
       WORDPRESS_DB_USER: wp
@@ -56,13 +70,12 @@ services:
       - wpdata:/var/www/html
     networks: [devnet]
 
-  # Caddy reverse-proxy for origin & mirror (dev)
   caddy:
     image: caddy:2
     depends_on: [wp]
     ports:
-      - "8080:80" # browse origin WordPress via :8080
-      - "8001:8000" # mirror “public” entry in dev via :8001 -> dev:9001
+      - "8080:80"
+      - "8001:8000"
     volumes:
       - wpdata:/var/www/html
       - ./.devcontainer/Caddyfile:/etc/caddy/Caddyfile:ro
@@ -70,12 +83,19 @@ services:
 
   redis:
     image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks: [devnet]
 
 volumes:
   pgdata: {}
   dbdata: {}
   wpdata: {}
+  cargo-cache: {}
+  target-cache: {}
 
 networks:
   devnet: {}

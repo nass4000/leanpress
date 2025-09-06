@@ -4,7 +4,7 @@ use bcrypt::{hash, verify, DEFAULT_COST};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use serde_json;
-use sqlx::types::uuid::Uuid;
+use sqlx::{types::uuid::Uuid, Row};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Deserialize)]
@@ -28,19 +28,24 @@ pub async fn register(
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
-    let result = sqlx::query!(
+    let result = sqlx::query(
         "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING user_id",
-        req.email,
-        hashed_password
     )
+    .bind(&req.email)
+    .bind(&hashed_password)
     .fetch_one(pool.get_ref())
     .await;
 
     match result {
-        Ok(record) => HttpResponse::Created().json(serde_json::json!({
-            "message": "User created successfully",
-            "user_id": record.user_id.to_string()
-        })),
+        Ok(row) => match row.try_get::<Uuid, _>("user_id") {
+            Ok(user_id) => HttpResponse::Created().json(serde_json::json!({
+                "message": "User created successfully",
+                "user_id": user_id.to_string()
+            })),
+            Err(_) => HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Failed to create user"
+            })),
+        },
         Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
             HttpResponse::Conflict().json(serde_json::json!({
                 "error": "User with this email already exists"
